@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Zgłoszenia{% endblock %}
+{% block nav_lista %}active{% endblock %}
+{% block content %}
+<div class="page-head">
+    {% if user.role == "admin" %}
+        <h2>Wszystkie zgłoszenia</h2>
+        <p>Widok administratora — zgłoszenia wszystkich użytkowników.</p>
+    {% else %}
+        <h2>Twoje zgłoszenia</h2>
+        <p>Lista zgłoszeń przypisanych do Twojego konta.</p>
+    {% endif %}
+</div>
+
+{% if zgloszenia %}
+    {% for z in zgloszenia %}
+    <div class="ticket">
+        <div class="ticket-top">
+            {# bez |safe - Jinja2 sam escapuje, wiec XSS nie przejdzie #}
+            <h3>{{ z["tytul"] }}</h3>
+            <span class="pill {{ z['priorytet'] }}">{{ z["priorytet"] }}</span>
+        </div>
+        <div class="opis">{{ z["opis"] }}</div>
+        <div class="foot">
+            <span>Dodano: {{ z["created_at"][:16].replace("T", " ") }}</span>
+            {% if z["email"] %}<span class="autor">Autor: {{ z["email"] }}</span>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="card">
+        <div class="empty">
+            <p>Nie ma jeszcze żadnych zgłoszeń.</p>
+            <a href="/nowe_zgloszenie">Dodaj pierwsze zgłoszenie →</a>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

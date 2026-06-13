@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Nowe zgłoszenie{% endblock %}
+{% block nav_nowe %}active{% endblock %}
+{% block content %}
+<div class="page-head">
+    <h2>Nowe zgłoszenie</h2>
+    <p>Opisz problem — wrócimy do Ciebie najszybciej jak się da.</p>
+</div>
+<div class="card">
+    {% if error %}
+        <div class="alert error"><span>!</span><span>{{ error }}</span></div>
+    {% endif %}
+    {% if sukces %}
+        <div class="alert sukces"><span>✓</span><span>{{ sukces }}</span></div>
+    {% endif %}
+    <form method="post" action="/nowe_zgloszenie">
+        {# ukryte pole z tokenem CSRF z sesji #}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Tytuł</label>
+        <input type="text" name="tytul" placeholder="np. Brak faktury do zamówienia #1234" required maxlength="200">
+        <label>Opis</label>
+        <textarea name="opis" rows="5" placeholder="Opisz szczegóły zgłoszenia…" required maxlength="2000"></textarea>
+        <label>Priorytet</label>
+        <select name="priorytet">
+            <option value="niski">Niski</option>
+            <option value="sredni">Średni</option>
+            <option value="wysoki">Wysoki</option>
+        </select>
+        <button type="submit" class="btn-primary">Wyślij zgłoszenie</button>
+    </form>
+</div>
+{% endblock %}
