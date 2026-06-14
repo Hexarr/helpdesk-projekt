@@ -8,9 +8,12 @@
      walidacja wejścia, dziennik zdarzeń `security_log`
    - moduł zgłoszeń (tydzień 7): lista i tworzenie zgłoszeń, ochrona przed
      SQL Injection / XSS / CSRF, whitelist priorytetów
-   - poprawki z tygodnia 8: RBAC w praktyce (admin widzi wszystkie zgłoszenia,
-     klient tylko swoje), rate limiting także dla zgłoszeń (priorytet nr 1
-     z DREAD — DoS), nagłówki bezpieczeństwa (X-Frame-Options, nosniff, CSP)
+   - poprawki z tygodnia 8: pełny RBAC z 3 rolami z modelu (klient / pracownik /
+     administrator), status zgłoszenia (nowe / w trakcie / zamknięte) zmieniany
+     tylko przez obsługę — punkt kontroli z analizy Tampering, rate limiting także
+     dla zgłoszeń (priorytet nr 1 z DREAD — DoS), nagłówki bezpieczeństwa
+     (X-Frame-Options, nosniff, CSP, Referrer-Policy), własna strona błędu 404/500
+     i testy w `pytest`
 2. **Artefakty z tygodni 1–8** — folder [`dokumentacja/`](.), pliki `01`–`08`
    (oryginalne PDF-y w [`dokumentacja/pdf/`](pdf/))
 3. **Security Checklist** — [`SECURITY_CHECKLIST.md`](../SECURITY_CHECKLIST.md),
@@ -22,7 +25,8 @@
 |-----------------------|-------------|
 | rate limiting logowania i zgłoszeń | DoS = najwyższy wynik DREAD (40), wymaganie z tygodnia 2 |
 | klient widzi tylko swoje zgłoszenia | Information Disclosure (DREAD 39), scenariusz 1 z tygodnia 2 |
-| role sprawdzane na backendzie (JWT) | Elevation of Privilege (DREAD 37), RBAC z tygodnia 5 |
+| role sprawdzane na backendzie (JWT, 3 role) | Elevation of Privilege (DREAD 37), RBAC z tygodnia 5 |
+| zmiana statusu tylko przez pracownika/admina | Tampering ze STRIDE (DREAD 36) |
 | parametryzowane zapytania SQL | Injection (OWASP), luki 1–2 z tygodnia 7 |
 | escapowanie Jinja2 bez `\|safe` | Stored XSS, luka 3 z tygodnia 7 |
 | token CSRF + SameSite=Strict | CSRF, luka 4 z tygodnia 7 |

@@ -10,7 +10,9 @@ kodu generowanego przez AI, po działającą, zabezpieczoną aplikację.
 .
 ├── app/                        # FINALNA aplikacja (moduły z tygodni 6-7 w jednym folderze)
 │   ├── app.py                  # logowanie + zgłoszenia, wszystkie zabezpieczenia
-│   ├── requirements.txt
+│   ├── requirements.txt        # zależności aplikacji
+│   ├── requirements-dev.txt    # zależności do testów (pytest)
+│   ├── test_app.py             # testy bezpieczeństwa (pytest)
 │   └── templates/              # szablony Jinja2 (escapowanie domyślne, bez |safe)
 ├── original_ai_version/
 │   └── app_insecure.py         # wersja podatna od AI (tylko do analizy!)
@@ -48,8 +50,9 @@ Adres: http://127.0.0.1:5000
 
 | Email | Hasło | Rola |
 |-------|-------|------|
-| `admin@sklep.pl` | `Admin123!` | admin (widzi wszystkie zgłoszenia) |
-| `klient@sklep.pl` | `Klient123!` | client (widzi tylko swoje) |
+| `admin@sklep.pl` | `Admin123!` | administrator (zarządza, widzi wszystkie) |
+| `pracownik@sklep.pl` | `Pracownik123!` | pracownik (obsługuje, widzi wszystkie) |
+| `klient@sklep.pl` | `Klient123!` | klient (widzi tylko swoje) |
 
 ## Zaimplementowane zabezpieczenia (skrót)
 
@@ -62,12 +65,26 @@ Adres: http://127.0.0.1:5000
 | JWT w HttpOnly cookie (30 min) | kradzież sesji przez JS |
 | rate limiting (login 5/min, zgłoszenia 10/min na IP) | brute force, DoS |
 | walidacja wejścia + whitelist priorytetów | złe/złośliwe dane |
-| RBAC na backendzie (rola z tokenu, nie z URL) | dostęp do cudzych danych, eskalacja uprawnień |
+| RBAC na backendzie (3 role; rola z tokenu, nie z URL) | dostęp do cudzych danych, eskalacja uprawnień |
+| zmiana statusu zgłoszenia tylko dla pracownika/admina | nieuprawniona zmiana danych (Tampering) |
 | tabela `security_log` | brak śladów po incydencie |
 | nagłówki: X-Frame-Options, nosniff, CSP, Referrer-Policy | clickjacking, MIME sniffing, wyciek referera |
 | `debug=False`, ogólne komunikaty błędów | wyciek szczegółów, user enumeration |
 
 Pełna lista z oznaczeniem braków: [SECURITY_CHECKLIST.md](SECURITY_CHECKLIST.md).
+
+## Testy
+
+```bash
+cd app
+pip install -r requirements-dev.txt
+pytest
+```
+
+Zestaw `test_app.py` sprawdza m.in.: odrzucenie SQL Injection, escapowanie XSS,
+wymaganie tokenu CSRF, rate limiting logowania, kontrolę dostępu (klient /
+pracownik / admin), zmianę statusu tylko przez obsługę, walidację priorytetu
+oraz własną stronę 404.
 
 ## Wersja podatna (tylko do analizy)
 

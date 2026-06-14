@@ -9,15 +9,15 @@ Legenda: ✅ spełnione w aplikacji | ⚠️ wymaga dalszej pracy przed produkcj
 | 1 | Hasła hashowane (bcrypt z solą), nigdy plain text | ✅ | `app/app.py` — `init_db()`, `login()` |
 | 2 | Parametryzowane zapytania SQL (ochrona przed SQL Injection) | ✅ | wszystkie `db.execute(..., (params,))` |
 | 3 | Escapowanie HTML — szablony Jinja2 bez `\|safe` (ochrona przed XSS) | ✅ | `app/templates/*.html` |
-| 4 | Token CSRF dla formularza zgłoszeń (jednorazowy, w sesji) | ✅ | `nowe_zgloszenie()` + ukryte pole w formularzu |
+| 4 | Token CSRF dla formularzy zmieniających stan (synchronizer token w sesji) | ✅ | `nowe_zgloszenie()`, `zmien_status()` + ukryte pole w formularzu |
 | 5 | JWT w HttpOnly cookie, SameSite=Strict, czas życia 30 min | ✅ | `create_token()`, `login()` |
 | 6 | Walidacja danych wejściowych na backendzie (długości, format e-mail, whitelist priorytetów) | ✅ | `login()`, `nowe_zgloszenie()` |
 | 7 | Rate limiting logowania (5 prób / IP / minutę) — ochrona przed brute force | ✅ | `rate_limited()` w `login()` |
 | 8 | Rate limiting zgłoszeń (10 / IP / minutę) — ochrona przed DoS | ✅ | `rate_limited()` w `nowe_zgloszenie()` |
-| 9 | Kontrola dostępu na backendzie — klient widzi tylko swoje zgłoszenia, admin wszystkie (RBAC) | ✅ | `zgloszenia()` — filtr po `user_id` z tokenu, nie z URL |
+| 9 | Kontrola dostępu na backendzie (RBAC, 3 role): klient widzi tylko swoje zgłoszenia, pracownik/admin wszystkie; zmianę statusu może wykonać tylko obsługa | ✅ | `zgloszenia()`, `zmien_status()` — rola z tokenu, nie z URL |
 | 10 | Logowanie zdarzeń bezpieczeństwa (udane/nieudane logowania, rate limit, blokady CSRF) | ✅ | tabela `security_log`, `log_event()` |
 | 11 | `debug=False` + ogólne komunikaty błędów (nie zdradzamy, czy email istnieje) | ✅ | `app.run(debug=False)`, komunikat "Błędny login lub hasło" |
-| 12 | Nagłówki bezpieczeństwa: X-Frame-Options, X-Content-Type-Options, CSP | ✅ | `security_headers()` (after_request) |
+| 12 | Nagłówki bezpieczeństwa: X-Frame-Options, X-Content-Type-Options, CSP, Referrer-Policy | ✅ | `security_headers()` (after_request) |
 
 ## Wymaga dalszej pracy
 
