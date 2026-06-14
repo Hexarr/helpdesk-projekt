@@ -4,7 +4,8 @@ Helpdesk dla sklepu internetowego.
 Czesc logowania: bcrypt, JWT w HttpOnly cookie, rate limiting, walidacja
 wejscia, dziennik zdarzen (security_log).
 Czesc zgloszen: ochrona przed SQL Injection (parametryzacja), XSS
-(escapowanie Jinja2) i CSRF (token w sesji).
+(escapowanie Jinja2) i CSRF (token w sesji). Zgloszenie ma status, ktory
+moga zmieniac tylko pracownik i administrator (kontrola dostepu - RBAC).
 
 Uruchomienie:
     pip install -r requirements.txt
@@ -12,8 +13,9 @@ Uruchomienie:
 Potem otworz: http://127.0.0.1:5000
 
 Konta testowe:
-    admin@sklep.pl  / Admin123!
-    klient@sklep.pl / Klient123!
+    admin@sklep.pl      / Admin123!      (administrator)
+    pracownik@sklep.pl  / Pracownik123!  (pracownik)
+    klient@sklep.pl     / Klient123!     (klient)
 """
 
 import os
@@ -44,6 +46,9 @@ FORCE_HTTPS = os.environ.get("HELPDESK_FORCE_HTTPS", "0") == "1"
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PRIORYTETY = {"niski", "sredni", "wysoki"}
+STATUSY = {"nowe", "w trakcie", "zamkniete"}
+# role obslugi - widza wszystkie zgloszenia i moga zmieniac status
+ROLE_OBSLUGI = {"employee", "admin"}
 
 # Prosty rate limiting w pamieci procesu.
 # W wiekszym systemie (wiele instancji backendu) lepszy bylby Redis.
@@ -51,6 +56,7 @@ RATE_WINDOW = 60
 RATE_MAX_LOGIN = 5        # max prob logowania z jednego IP na minute
 RATE_MAX_ZGLOSZENIA = 10  # max zgloszen z jednego IP na minute (ochrona DoS)
 ATTEMPTS: dict[str, list[float]] = {}
+_last_prune = 0.0
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY  # sesja Flask uzywana tylko do tokenu CSRF
@@ -86,7 +92,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
             password_hash BLOB NOT NULL,
-            role TEXT NOT NULL CHECK(role IN ('client', 'admin')),
+            role TEXT NOT NULL CHECK(role IN ('client', 'employee', 'admin')),
             created_at TEXT NOT NULL
         )
     """)
@@ -96,6 +102,7 @@ def init_db():
             tytul TEXT NOT NULL,
             opis TEXT NOT NULL,
             priorytet TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'nowe' CHECK(status IN ('nowe', 'w trakcie', 'zamkniete')),
             user_id INTEGER NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id)
@@ -113,6 +120,7 @@ def init_db():
     """)
     for email, password, role in [
         ("admin@sklep.pl", "Admin123!", "admin"),
+        ("pracownik@sklep.pl", "Pracownik123!", "employee"),
         ("klient@sklep.pl", "Klient123!", "client"),
     ]:
         # hasla hashowane bcryptem, nigdy plain text
@@ -140,15 +148,45 @@ def log_event(event_type: str, email: str | None = None):
     db.commit()
 
 
+def _prune_attempts(now: float):
+    # co RATE_WINDOW czyscimy stare wpisy, zeby slownik nie rosl w nieskonczonosc.
+    # bez tego kazdy nowy adres IP zostawia wpis na zawsze (drobny wektor DoS na pamiec).
+    global _last_prune
+    if now - _last_prune < RATE_WINDOW:
+        return
+    _last_prune = now
+    for key in list(ATTEMPTS):
+        swieze = [t for t in ATTEMPTS[key] if now - t < RATE_WINDOW]
+        if swieze:
+            ATTEMPTS[key] = swieze
+        else:
+            del ATTEMPTS[key]
+
+
 def rate_limited(key: str, max_attempts: int) -> bool:
     """Zwraca True jesli z danego klucza (np. 'login:1.2.3.4') bylo za duzo prob."""
     now = time.time()
+    _prune_attempts(now)
     attempts = ATTEMPTS.setdefault(key, [])
     attempts[:] = [t for t in attempts if now - t < RATE_WINDOW]
     if len(attempts) >= max_attempts:
         return True
     attempts.append(now)
     return False
+
+
+def get_csrf_token() -> str:
+    # synchronizer token - jeden na sesje, sekret nieznany atakujacemu z zewnatrz
+    token = session.get("csrf_token")
+    if not token:
+        token = os.urandom(32).hex()
+        session["csrf_token"] = token
+    return token
+
+
+def check_csrf() -> bool:
+    przyslany = request.form.get("csrf_token", "")
+    return bool(przyslany) and przyslany == session.get("csrf_token", "")
 
 
 def create_token(user_id: int, email: str, role: str) -> str:
@@ -197,6 +235,17 @@ def security_headers(response):
     # po wylogowaniu (i wyglada jakby logout nie dzialal)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@app.errorhandler(404)
+def blad_404(e):
+    return render_template("error.html", code=404, message="Nie znaleziono strony."), 404
+
+
+@app.errorhandler(500)
+def blad_500(e):
+    # nie pokazujemy uzytkownikowi szczegolow bledu
+    return render_template("error.html", code=500, message="Wystapil blad serwera."), 500
 
 
 # ------------------------------- widoki -------------------------------
@@ -269,21 +318,55 @@ def panel():
 @login_required
 def zgloszenia():
     db = get_db()
-    # kontrola dostepu (RBAC): tozsamosc bierzemy z tokenu, nigdy z parametru URL.
-    # klient widzi tylko swoje zgloszenia, admin wszystkie.
-    if g.user["role"] == "admin":
+    # kontrola dostepu (RBAC): tozsamosc i role bierzemy z tokenu, nigdy z URL.
+    # obsluga (pracownik/admin) widzi wszystkie zgloszenia, klient tylko swoje.
+    if g.user["role"] in ROLE_OBSLUGI:
         wyniki = db.execute(
-            """SELECT z.id, z.tytul, z.opis, z.priorytet, z.created_at, u.email
+            """SELECT z.id, z.tytul, z.opis, z.priorytet, z.status, z.created_at, u.email
                FROM zgloszenia z JOIN users u ON u.id = z.user_id
                ORDER BY z.id DESC"""
         ).fetchall()
+        moze_zmieniac = True
     else:
         wyniki = db.execute(
-            """SELECT id, tytul, opis, priorytet, created_at, NULL AS email
+            """SELECT id, tytul, opis, priorytet, status, created_at, NULL AS email
                FROM zgloszenia WHERE user_id = ? ORDER BY id DESC""",
             (int(g.user["sub"]),),
         ).fetchall()
-    return render_template("zgloszenia.html", zgloszenia=wyniki, user=g.user)
+        moze_zmieniac = False
+    return render_template(
+        "zgloszenia.html",
+        zgloszenia=wyniki,
+        user=g.user,
+        moze_zmieniac=moze_zmieniac,
+        statusy=sorted(STATUSY),
+        csrf_token=get_csrf_token(),
+    )
+
+
+@app.route("/zgloszenie/<int:zgloszenie_id>/status", methods=["POST"])
+@login_required
+def zmien_status(zgloszenie_id):
+    # punkt kontroli z analizy STRIDE (Tampering): zmiane stanu sprawdzamy
+    # na backendzie - CSRF, potem rola, potem whitelist wartosci.
+    if not check_csrf():
+        log_event("csrf_blocked", g.user["email"])
+        return render_template("error.html", code=403, message="Nieprawidlowy token CSRF."), 403
+    if g.user["role"] not in ROLE_OBSLUGI:
+        log_event("status_change_denied", g.user["email"])
+        return render_template("error.html", code=403, message="Brak uprawnien do zmiany statusu."), 403
+    nowy = request.form.get("status", "")
+    if nowy not in STATUSY:
+        return render_template("error.html", code=400, message="Nieprawidlowy status."), 400
+
+    db = get_db()
+    cur = db.execute("UPDATE zgloszenia SET status = ? WHERE id = ?", (nowy, zgloszenie_id))
+    db.commit()
+    if cur.rowcount == 0:
+        return render_template("error.html", code=404, message="Nie znaleziono zgloszenia."), 404
+
+    log_event("status_changed:" + nowy, g.user["email"])
+    return redirect(url_for("zgloszenia"))
 
 
 @app.route("/nowe_zgloszenie", methods=["GET", "POST"])
@@ -292,26 +375,20 @@ def nowe_zgloszenie():
     error = None
     sukces = None
 
-    if request.method == "GET":
-        # CSRF: losowy token w sesji, formularz musi go odeslac w ukrytym polu
-        session["csrf_token"] = os.urandom(32).hex()
-
     if request.method == "POST":
-        token_z_formularza = request.form.get("csrf_token", "")
-        token_z_sesji = session.get("csrf_token", "")
-        if not token_z_formularza or token_z_formularza != token_z_sesji:
+        # CSRF: token z sesji musi zgadzac sie z polem formularza
+        if not check_csrf():
             log_event("csrf_blocked", g.user["email"])
-            error = "Nieprawidlowe zadanie (bledny token CSRF)."
-            return render_template("nowe_zgloszenie.html", error=error,
-                                   csrf_token="", user=g.user), 403
+            return render_template("nowe_zgloszenie.html",
+                                   error="Nieprawidlowe zadanie (bledny token CSRF).",
+                                   csrf_token=get_csrf_token(), user=g.user), 403
 
         # limit zgloszen - DoS mial najwyzszy wynik w analizie DREAD
         if rate_limited("zgloszenie:" + client_ip(), RATE_MAX_ZGLOSZENIA):
             log_event("zgloszenie_rate_limited", g.user["email"])
-            error = "Za duzo zgloszen w krotkim czasie. Sprobuj za minute."
-            return render_template("nowe_zgloszenie.html", error=error,
-                                   csrf_token=session.get("csrf_token", ""),
-                                   user=g.user), 429
+            return render_template("nowe_zgloszenie.html",
+                                   error="Za duzo zgloszen w krotkim czasie. Sprobuj za minute.",
+                                   csrf_token=get_csrf_token(), user=g.user), 429
 
         tytul = (request.form.get("tytul") or "").strip()
         opis = (request.form.get("opis") or "").strip()
@@ -329,7 +406,7 @@ def nowe_zgloszenie():
             error = "Nieprawidlowa wartosc priorytetu."
         else:
             db = get_db()
-            # SQL Injection: parametryzowane zapytanie
+            # SQL Injection: parametryzowane zapytanie (status bierze domyslne 'nowe')
             db.execute(
                 "INSERT INTO zgloszenia (tytul, opis, priorytet, user_id, created_at) VALUES (?, ?, ?, ?, ?)",
                 (tytul, opis, priorytet, int(g.user["sub"]),
@@ -338,11 +415,8 @@ def nowe_zgloszenie():
             db.commit()
             sukces = "Zgloszenie zostalo dodane!"
 
-        # Nowy token po kazdym POST - token jest jednorazowy.
-        session["csrf_token"] = os.urandom(32).hex()
-
     return render_template("nowe_zgloszenie.html", error=error, sukces=sukces,
-                           csrf_token=session.get("csrf_token", ""), user=g.user)
+                           csrf_token=get_csrf_token(), user=g.user)
 
 
 @app.route("/logout", methods=["POST"])

@@ -204,8 +204,36 @@
             font-size: 11px;
             font-weight: 500;
             color: var(--muted);
-            text-transform: capitalize;
         }
+
+        /* ---------- status zgloszenia ---------- */
+        .pill.st-nowe      { background: rgba(96, 165, 250, 0.14); color: #60a5fa; }
+        .pill.st-w-trakcie { background: var(--amber-bg); color: var(--amber); }
+        .pill.st-zamkniete { background: rgba(146, 152, 162, 0.16); color: #9298a2; }
+
+        /* role uzytkownika (pigulka w panelu) */
+        .pill.rola-admin    { background: var(--red-bg);   color: var(--red); }
+        .pill.rola-employee { background: var(--amber-bg); color: var(--amber); }
+        .pill.rola-client   { background: var(--green-bg); color: var(--green); }
+
+        /* ---------- formularz zmiany statusu (obsluga) ---------- */
+        .status-form { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
+        .status-form select { width: auto; margin-top: 0; padding: 7px 10px; font-size: 13px; }
+        .status-form button {
+            margin-top: 0;
+            padding: 7px 14px;
+            background: var(--surface-2);
+            color: var(--text);
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .status-form button:hover { background: #313640; border-color: #474e59; }
+        .badges { display: flex; gap: 8px; flex-wrap: wrap; }
 
         /* ---------- empty state ---------- */
         .empty { text-align: center; padding: 44px 20px; color: var(--muted); }
@@ -241,7 +269,7 @@
             <div class="user">
                 <div class="who">
                     <b>{{ user.email }}</b>
-                    <div><span class="rola">{{ user.role }}</span></div>
+                    <div><span class="rola">{% if user.role == 'admin' %}administrator{% elif user.role == 'employee' %}pracownik{% else %}klient{% endif %}</span></div>
                 </div>
                 <form method="post" action="{{ url_for('logout') }}">
                     <button type="submit" class="btn-logout">Wyloguj</button>

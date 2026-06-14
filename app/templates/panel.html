@@ -9,17 +9,19 @@
 <div class="card">
     <div class="info-row"><span class="k">Email</span><b>{{ user.email }}</b></div>
     <div class="info-row"><span class="k">Rola</span>
-        <span class="pill {{ 'wysoki' if user.role == 'admin' else 'niski' }}">{{ user.role }}</span>
+        <span class="pill rola-{{ user.role }}">{% if user.role == 'admin' %}administrator{% elif user.role == 'employee' %}pracownik{% else %}klient{% endif %}</span>
     </div>
     <div class="info-row"><span class="k">Widok</span>
-        {% if user.role == "admin" %}
-            <span>Widzisz zgłoszenia <b>wszystkich</b> użytkowników.</span>
+        {% if user.role == 'admin' %}
+            <span>Widzisz i zarządzasz <b>wszystkimi</b> zgłoszeniami.</span>
+        {% elif user.role == 'employee' %}
+            <span>Obsługujesz zgłoszenia <b>wszystkich</b> klientów.</span>
         {% else %}
             <span>Widzisz <b>tylko swoje</b> zgłoszenia.</span>
         {% endif %}
     </div>
     <div class="quick-links">
-        <a href="/zgloszenia">Moje zgłoszenia</a>
+        <a href="/zgloszenia">{% if user.role == 'client' %}Moje zgłoszenia{% else %}Wszystkie zgłoszenia{% endif %}</a>
         <a href="/nowe_zgloszenie">Nowe zgłoszenie</a>
     </div>
 </div>

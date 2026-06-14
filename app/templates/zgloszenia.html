@@ -3,9 +3,9 @@
 {% block nav_lista %}active{% endblock %}
 {% block content %}
 <div class="page-head">
-    {% if user.role == "admin" %}
+    {% if moze_zmieniac %}
         <h2>Wszystkie zgłoszenia</h2>
-        <p>Widok administratora — zgłoszenia wszystkich użytkowników.</p>
+        <p>Widok obsługi — możesz zmieniać status każdego zgłoszenia.</p>
     {% else %}
         <h2>Twoje zgłoszenia</h2>
         <p>Lista zgłoszeń przypisanych do Twojego konta.</p>
@@ -18,13 +18,28 @@
         <div class="ticket-top">
             {# bez |safe - Jinja2 sam escapuje, wiec XSS nie przejdzie #}
             <h3>{{ z["tytul"] }}</h3>
-            <span class="pill {{ z['priorytet'] }}">{{ z["priorytet"] }}</span>
+            <div class="badges">
+                <span class="pill st-{{ z['status']|replace(' ', '-') }}">{{ z["status"] }}</span>
+                <span class="pill {{ z['priorytet'] }}">{{ z["priorytet"] }}</span>
+            </div>
         </div>
         <div class="opis">{{ z["opis"] }}</div>
         <div class="foot">
             <span>Dodano: {{ z["created_at"][:16].replace("T", " ") }}</span>
             {% if z["email"] %}<span class="autor">Autor: {{ z["email"] }}</span>{% endif %}
         </div>
+        {% if moze_zmieniac %}
+        <form class="status-form" method="post" action="/zgloszenie/{{ z['id'] }}/status">
+            {# zmiana statusu tylko dla obslugi - token CSRF + kontrola roli na backendzie #}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <select name="status">
+                {% for s in statusy %}
+                <option value="{{ s }}" {% if z['status'] == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Zmień status</button>
+        </form>
+        {% endif %}
     </div>
     {% endfor %}
 {% else %}
